@@ -15,7 +15,7 @@ except ImportError:
     from radar_class import Radar
 
 
-SAVE_DIR_LOG = "Data/TestingLogs"
+SAVE_DIR_LOG = "Data/PolarisationLogs/MotorLogs"
 PHASE_DURATION = 40.0
 
 
@@ -31,9 +31,9 @@ def ask_save_data():
         print("Please enter 'y' or 'n'.")
 
 
-def radar_worker(radar, stop_event, result, save_data):
+def radar_worker(radar, stop_event, result, save_data, time_origin):
     try:
-        radar_cube, time_cube = radar.collect(stop_event)
+        radar_cube, time_cube = radar.collect(stop_event, time_origin=time_origin)
         result["data"] = (radar_cube, time_cube)
         if save_data:
             result["file"] = radar.save(
@@ -49,12 +49,12 @@ def centered_phases():
     phases = [MovementPhase("stationary", position=3000)]
 
     for low, high in (
-        (0, 6000),
-#       (1000, 5000),
-#       (1500, 4500),
-#       (2000, 4000),
-        (2500, 3500),
-        (2750, 3250),
+       (0, 6000),
+       (1000, 5000),
+       (1500, 4500),
+       (2000, 4000),
+       (2500, 3500),
+       (2750, 3250),
     ):
         phases.append(
             MovementPhase(
@@ -69,18 +69,19 @@ def centered_phases():
         (0, 6000),
         (1000, 5000),
         (2000, 4000),
-#        (2500, 3500),
+        (2500, 3500),
         (2750, 3250),
-        (0, 3000),
- #       (3000, 6000),
- #       (4000, 6000),
- #       (5000, 6000),
+
+        (3000, 6000),
+        (4000, 6000),
+        (5000, 6000),
         (5500, 6000),
- #       (0, 3000),
- #       (0, 2000),
- #       (0, 1000),
+
+        (0, 3000),
+        (0, 2000),
+        (0, 1000),
         (0, 500),
- #       (0, 6000),
+        
     ):
         phases.append(
             MovementPhase(
@@ -122,24 +123,28 @@ def main(motor=None, radar=None):
             print(f"Phase: {phase.type}\nlow: {phase.low}, high: {phase.high}, speed choices: {phase.speed_choices}\n")
 
 
-    start_time = time.perf_counter()
+
+    motor.initiate()
+    motor.reference()
+    time.sleep(2)
+    motor.move_to(3000, speed="1") #initial movement so motor is in correct state before starting radar acquisition
+    time.sleep(1)
+
+
+
+    time_origin = time.perf_counter()
+    
     radar_thread = threading.Thread(
         target=radar_worker,
-        args=(radar, stop_event, radar_result, save_data),
+        args=(radar, stop_event, radar_result, save_data, time_origin),
     )
+    
 
     try:
-        motor.initiate()
-        motor.reference()
-        time.sleep(2)
-        motor.move_to(3000, speed="1") #initial movement so motor is in correct state before starting radar acquisition
-        time.sleep(1)
-       
-        
         radar_thread.start()
         time.sleep(1)
         print("Starting Movement")
-        movement.run(centered_phases(), start_time=start_time)
+        movement.run(centered_phases(), start_time=time_origin)
     finally:
         stop_event.set()
         if radar_thread.is_alive():
@@ -156,7 +161,7 @@ def main(motor=None, radar=None):
         radar.plot(radar_data[0])
 
     experiment = {
-        "start_time": float(start_time),
+        "start_time": float(time_origin),
         "end_time": float(end_time),
         "motor_log": movement.motor_log,
     }
